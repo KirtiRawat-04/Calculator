@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Calculator</title>
+  <style>
+    :root{
+      --bg:#0b1020; --panel:#111737; --glass:#152055; --btn:#1a2a6e; --btn2:#22337f;
+      --op:#ffae34; --op2:#ff9900; --text:#eaf0ff; --muted:#9fb0d0; --danger:#ef4444; --ok:#10b981;
+      --radius:18px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; display:grid; place-items:center; background:radial-gradient(1200px 600px at 90% -10%, #24337c 0%, transparent 55%), var(--bg);
+      font-family:system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif; color:var(--text); padding:18px;
+    }
+    .app{
+      width:min(420px, 94vw);
+      background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      border:1px solid rgba(255,255,255,0.08);
+      border-radius:var(--radius);
+      box-shadow:0 20px 50px rgba(0,0,0,.45);
+      overflow:hidden;
+    }
+    header{padding:14px 16px; border-bottom:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.03)}
+    header h1{margin:0; font-size:16px; letter-spacing:.5px; color:var(--muted)}
+    .display{
+      background:var(--glass); padding:20px 16px; text-align:right; min-height:120px;
+      display:flex; flex-direction:column; justify-content:flex-end; gap:8px;
+    }
+    .history{min-height:20px; color:var(--muted); font-size:14px; word-break:break-all}
+    .output{font-size:40px; font-weight:800; word-break:break-all}
+    .keys{
+      display:grid; grid-template-columns:repeat(4,1fr); gap:10px; padding:14px; background:rgba(255,255,255,.02);
+    }
+    button{
+      appearance:none; border:none; cursor:pointer; height:60px; border-radius:14px; font-size:18px; font-weight:700;
+      color:var(--text); background:var(--btn); box-shadow:inset 0 -4px 0 rgba(0,0,0,.25); transition:transform .06s ease, filter .2s ease, background .2s ease
+    }
+    button:hover{filter:brightness(1.1)}
+    button:active{transform:translateY(1px)}
+    .op{background:linear-gradient(180deg, var(--op), var(--op2)); color:#251200}
+    .wide{grid-column:span 2}
+    .muted{background:var(--btn2)}
+    .danger{background:linear-gradient(180deg, #ff6b6b, #ef4444)}
+    .ok{background:linear-gradient(180deg, #34d399, #10b981)}
+    footer{padding:10px 14px; text-align:center; color:var(--muted); font-size:12px; border-top:1px solid rgba(255,255,255,.06)}
+    @media (max-width:360px){ .output{font-size:34px} button{height:56px} }
+  </style>
+</head>
+<body>
+  <main class="app" role="application" aria-label="Calculator">
+    <header><h1>Calculator</h1></header>
+
+    <section class="display" aria-live="polite">
+      <div id="history" class="history"> </div>
+      <div id="output" class="output">0</div>
+    </section>
+
+    <section class="keys">
+      <button class="muted" data-action="percent">%</button>
+      <button class="muted" data-action="invert">±</button>
+      <button class="muted danger" data-action="clear">C</button>
+      <button class="op" data-op="÷">÷</button>
+
+      <button data-num="7">7</button>
+      <button data-num="8">8</button>
+      <button data-num="9">9</button>
+      <button class="op" data-op="×">×</button>
+
+      <button data-num="4">4</button>
+      <button data-num="5">5</button>
+      <button data-num="6">6</button>
+      <button class="op" data-op="−">−</button>
+
+      <button data-num="1">1</button>
+      <button data-num="2">2</button>
+      <button data-num="3">3</button>
+      <button class="op" data-op="+">+</button>
+
+      <button class="wide" data-num="0">0</button>
+      <button data-dot=".">.</button>
+      <button class="ok" data-action="equals">=</button>
+    </section>
+
+    <footer>Keyboard: 0–9, + − × * ÷ / .  Enter=equals, Backspace=⌫, Esc=C</footer>
+  </main>
+
+  <script>
+    // --- State ---
+    let current = "0";
+    let prev = "";
+    let op = null; // '+', '−', '×', '÷'
+    let justEvaluated = false;
+
+    const outEl = document.getElementById("output");
+    const histEl = document.getElementById("history");
+
+    function fmt(n){
+      // keep as string, show up to 12 significant digits, but don't mangle long ints
+      if (!isFinite(Number(n))) return "Error";
+      const num = Number(n);
+      const abs = Math.abs(num);
+      if (abs !== 0 && (abs >= 1e12 || abs < 1e-6)) return num.toExponential(6).replace("+","");
+      const parts = n.split(".");
+      let int = parts[0];
+      const dec = parts[1] || "";
+      // add grouping to int if it's numeric
+      if (/^-?\d+$/.test(int)) int = Number(int).toLocaleString();
+      return dec ? `${int}.${dec}` : int;
+    }
+
+    function update(){
+      outEl.textContent = fmt(current);
+      const opText = op ? ` ${op} ` : "";
+      histEl.textContent = `${prev ? fmt(prev) : ""}${opText}`.trim();
+    }
+
+    function inputDigit(d){
+      if (justEvaluated) { current = "0"; justEvaluated = false; }
+      if (current === "0") current = d;
+      else if (current === "-0") current = "-" + d;
+      else current += d;
+      update();
+    }
+
+    function inputDot(){
+      if (justEvaluated) { current = "0"; justEvaluated = false; }
+      if (!current.includes(".")) current += ".";
+      update();
+    }
+
+    function chooseOp(nextOp){
+      if (op && prev !== "" && !justEvaluated){
+        equals(); // chain operations
+      }
+      op = nextOp;
+      prev = current;
+      current = "0";
+      justEvaluated = false;
+      update();
+    }
+
+    function clearAll(){
+      current = "0"; prev = ""; op = null; justEvaluated = false; update();
+    }
+
+    function invert(){
+      if (current.startsWith("-")) current = current.slice(1);
+      else if (current !== "0") current = "-" + current;
+      update();
+    }
+
+    function percent(){
+      const num = Number(current);
+      if (isFinite(num)) current = String(num / 100);
+      update();
+    }
+
+    function sanitizeExpression(a, operator, b){
+      // Convert symbols to JS operators and evaluate safely
+      const map = { "+":"+","−":"-","×":"*","÷":"/" };
+      const opJS = map[operator];
+      const A = Number(a), B = Number(b);
+      if (!isFinite(A) || !isFinite(B) || !opJS) return "Error";
+      switch(opJS){
+        case "+": return String(A + B);
+        case "-": return String(A - B);
+        case "*": return String(A * B);
+        case "/": return B === 0 ? "Error" : String(A / B);
+        default: return "Error";
+      }
+    }
+
+    function equals(){
+      if (op === null || prev === "") return;
+      const result = sanitizeExpression(prev, op, current);
+      current = result;
+      prev = "";
+      op = null;
+      justEvaluated = true;
+      update();
+    }
+
+    // --- Wire buttons ---
+    document.querySelectorAll("[data-num]").forEach(b=> b.addEventListener("click", ()=> inputDigit(b.dataset.num)));
+    document.querySelector("[data-dot]").addEventListener("click", inputDot);
+    document.querySelectorAll("[data-op]").forEach(b=> b.addEventListener("click", ()=> chooseOp(b.dataset.op)));
+    document.querySelector("[data-action='clear']").addEventListener("click", clearAll);
+    document.querySelector("[data-action='invert']").addEventListener("click", invert);
+    document.querySelector("[data-action='percent']").addEventListener("click", percent);
+    document.querySelector("[data-action='equals']").addEventListener("click", equals);
+
+    // --- Keyboard support ---
+    window.addEventListener("keydown", (e)=>{
+      const k = e.key;
+      if (/\d/.test(k)) return inputDigit(k);
+      if (k === ".") return inputDot();
+      if (k === "+" || k === "-" || k === "*" || k === "x" || k === "X" || k === "/" ){
+        const symbol = k === "+" ? "+" : (k === "-" ? "−" : (k === "/" ? "÷" : "×"));
+        return chooseOp(symbol);
+      }
+      if (k === "Enter" || k === "=") return equals();
+      if (k === "Backspace"){
+        if (justEvaluated){ clearAll(); return; }
+        if (current.length > 1) { current = current.slice(0,-1); }
+        else { current = "0"; }
+        return update();
+      }
+      if (k === "Escape") return clearAll();
+    });
+
+    update(); // initial paint
+  </script>
+</body>
+</html>
